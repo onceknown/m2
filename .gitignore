@@ -33,3 +33,15 @@ nosetests.xml
 .mr.developer.cfg
 .project
 .pydevproject
+
+
+# hide generated dirs
+logs/*
+db/*
+run/*
+tmp/*
+
+# hide generated files
+config.sqlite
+mongrel2.conf
+supervisor.conf

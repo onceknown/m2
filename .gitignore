@@ -45,3 +45,6 @@ tmp/*
 config.sqlite
 mongrel2.conf
 supervisor.conf
+
+# Mac stuff
+.DS_Store

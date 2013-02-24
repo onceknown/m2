@@ -12,7 +12,7 @@ from zmq.eventloop.zmqstream import ZMQStream
 
 CHECK_INTERVAL = 1000
 CHECKUP_INTERVAL = CHECK_INTERVAL * 2
-CHECKUP_TIMEOUT = CHECKUP_INTERVAL / 4
+CHECKUP_TIMEOUT = CHECKUP_INTERVAL / 2
 PAUSE_BEFORE_RESTART = CHECK_INTERVAL / 6
 PAUSE_AFTER_RESTART = PAUSE_BEFORE_RESTART
 
@@ -88,12 +88,19 @@ def print_output(frames):
 
 
 # flag for whether we can reach the service
-responding = True
+responding = False
 
 # routines
 
 def launch_service():
-    global path
+    global path, service
+
+    try:
+        service.terminate()
+        print("{0} wasn't dead, but is now.".format(MODULE))
+    except Exception as e:
+        pass
+
     with open(os.devnull, 'w') as out:
         return subprocess.Popen(CONFIG['command'], 
                                 cwd=path,
@@ -116,12 +123,21 @@ def send_checkup():
     def recv_checkup(msg):
         global responding
         responding = True
+        #print(msg)
 
+
+    def checkup_sent(msg, status):
+        pass
+        #print(msg, status)
+
+    #print('sending checkup')
+    
     # access globals
     global timeout, checkup, responding
 
     # listen for ping back
     checkup.on_recv(recv_checkup)
+    checkup.on_send(checkup_sent)
 
     # do what's needed to rescue on timeout
     responding = False
@@ -130,9 +146,11 @@ def send_checkup():
 
     # send ping
     checkup.send('You alive?')
+    #print('checkup send called')
 
 
 def restart_service():
+    global service
 
     def restart_checkup():
         global checkup_periodic
@@ -142,8 +160,9 @@ def restart_service():
     checkup_restart = DelayedCallback(restart_checkup, 
                                       PAUSE_AFTER_RESTART, 
                                       io_loop=loop)
-    launch_service()
+    service = launch_service()
     checkup_restart.start()
+
 
 
 def check_for_change():
@@ -172,9 +191,9 @@ def start(root):
     global loop, service, path, suicide, checkup, out 
     global checksums, watch, check_periodic, checkup_periodic
     path = root
-    
+
     print('Starting.')
-    
+
     # define values for config vars
     try:
         command = CONFIG['command']
@@ -222,9 +241,10 @@ CONFIG = {
     # bind req to checkup
     c = ctx.socket(zmq.REQ)
     c.bind(checkup)
+    c.hwm = 1
     checkup = ZMQStream(c, io_loop=loop)
 
-    # sub to stdout address
+    # bind a sub to stdout address
     o = ctx.socket(zmq.SUB)
     o.setsockopt(zmq.SUBSCRIBE, '')
     o.bind(stdout)
@@ -244,13 +264,6 @@ CONFIG = {
     # start service 
     service = launch_service()
 
-    # wait a tick to make sure we started up
-    time.sleep(.5)
-    code = service.poll()
-    if code:
-        print("`{0}` didn't start. Try debugging standalone.".format(MODULE))
-        sys.exit(1)
-
     # build filesystem state
     checksums = check(path, watch)
 
@@ -262,6 +275,7 @@ CONFIG = {
 
 def stop(signum, frame):
 
+    # clean up once suicide msg is sent
     def sent(msg, status):
         global loop, suicide, checkup, out
         try:
@@ -295,8 +309,8 @@ if __name__ == '__main__':
         CONFIG = __import__(MODULE).__dict__['CONFIG']
 
     except IndexError as e:
-        print('You must pass the name of the module to run.')
-        print('example: `python run.py service`')
+        print('You must pass the name of the module to run. Example: ',
+              '> python run.py service')
         sys.exit(1)
 
     except ImportError as e:

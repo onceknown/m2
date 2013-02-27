@@ -56,7 +56,7 @@ class Delegate(object):
 AuthenticatedWebServer will use the delegate's methods and attributes
 inside its server loop to provide hooks for customization. m2.Service
 will guarantee that all subclasses at least implement the ZMQ topology
-described above. 
+described above.
 
 """
 
@@ -175,10 +175,10 @@ def init():
     try:
         db = get_db(pymongo)
     except Exception as e:
-        # wait before dying so run.py has a chance to start checkups
-        out.send("Couldn't connect to Mongo at startup.")
-        time.sleep(LINGER)
-        sys.exit(1)
+        out.send('DB', json.dumps({
+            'status': 'DOWN_CONN',
+            'msg': "Couldn't connect to Mongo at startup."
+        }))
 
     # define poller
     poller = zmq.Poller()
@@ -212,6 +212,7 @@ def init():
                 if msg.get('command') == 'die':
 
                     out.send('GOODBYE')
+                    
                     # clean up sockets
                     command.close()
                     checkup.close()
@@ -336,7 +337,7 @@ def init():
                         path = URL_TEMPLATE.rstrip('/').format(req.headers.get('host') 
                                                              + req.headers.get('URI'))
 
-                        # TODO: handle urls that include qs's and hashes
+                        # TODO: handle auth url that includes qs's and hashes
                         path = urllib.quote(path)
                         redirect = str(auth_url + '?redirect=' + path)
 
@@ -348,7 +349,7 @@ def init():
                                       })
                 else:
                     # reset state by closing and reconnecting
-                    out.send('ERROR', 'auth timed out.')
+                    out.send('ERROR', 'Auth timed out.')
                     auth.close()
                     auth = ctx.socket(zmq.REQ)
                     auth.linger = LINGER

@@ -46,8 +46,8 @@ class Out(object):
     An abstraction for sending output.  `send` prints to stdout,
     logs using python's logging tools, and PUBs on the process's
     output socket. Obviously, as I dial in on the API this will be
-    overkill, but for now it gets log messages out either from
-    running run.py or from supervisor.
+    overkill, but for now it gets log messages out whether you're 
+    running standalone, from run.py, or from supervisord.
     """
 
     def __init__(self, out_sock, **kwargs):
@@ -79,15 +79,17 @@ class Out(object):
         self.logger.debug(format.format(key, msg))
 
 def db(pymongo):
-    mongo = pymongo.MongoClient('localhost', DB_PORT, use_greenlets=True)
+    mongo = pymongo.MongoClient('localhost',
+                                DB_PORT,
+                                use_greenlets=True)
     return mongo.hello
 
 
 def m2():
     """
     Generates mongrel2.conf and returns config options needed by m2sh.
-    This should be a configuration passed directly to m2.py, but this hack
-    works until I've figured out a protocol that works.
+    This should be all done through a ZMQ API in m2.py, but this hack
+    works for now.
     """
     m2_conf = os.path.join(os.getcwd(), 'mongrel2.conf')
     with open(os.path.join(os.getcwd(), 'mongrel2.tpl'), 'r') as t:

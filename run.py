@@ -1,12 +1,30 @@
 #!/usr/bin/python
 
+"""
+This is an example of an infrastructure process that manages
+app services running behind Mongrel2. run.py binds all the infrastructure
+addresses for the service name passed to it and starts it up.
+
+It runs 2 intervals, one to check for file change so it can restart the service, 
+and one that pings the service's checkup socket to make sure it's still responding, 
+restarting if necessary. It also prints all output from the service to stdout. 
+
+By running your service with run.py, you have a local debugging rig without
+complicating your app code.
+
+I'm using Tornado's IO Loop since a reactor loop simplifies interval code
+(at least in my head). I need to decide on a config API that can be used no
+matter what language the service is written in, right now it uses Python's
+excellent namespacing to hack together something that works.
+
+"""
+
 import os, sys, subprocess, signal, time
 import hashlib, urllib2, errno, uuid, json
 
 import zmq
 from zmq.eventloop.ioloop import PeriodicCallback, DelayedCallback
 from zmq.eventloop.zmqstream import ZMQStream
-
 
 
 # constants
@@ -48,7 +66,7 @@ def create_checksums(root,
                             sha.update(d.read())
                             checksums[root_path] = sha.hexdigest()
                     except IOError as e:
-                        raise FileOpenException(format(s=root_path))
+                        raise e
     return checksums
 
 class DictDiffer(object):
@@ -91,15 +109,14 @@ def print_output(frames):
 # flag for whether we can reach the service
 responding = False
 
-# routines
 
+# routines
 
 def launch_service():
     global path, srv, KEY
 
     try:
         srv.terminate()
-        # print("{0} wasn't dead, but is now.".format(MODULE))
     except NameError as e:
         # first run of launch_service, so silence
         pass
@@ -128,19 +145,12 @@ def send_checkup():
     def recv_checkup(msg):
         global responding
         responding = True
-        #print(msg)
-
-
-    def checkup_sent(msg, status):
-        pass
-        #print(msg, status)
 
     # access globals
     global timeout, checkup, responding
 
     # listen for ping back
     checkup.on_recv(recv_checkup)
-    checkup.on_send(checkup_sent)
 
     # do what's needed to rescue on timeout
     responding = False
@@ -149,7 +159,6 @@ def send_checkup():
 
     # send ping
     checkup.send('You alive?')
-    #print('checkup send called')
 
 
 def restart_service():
@@ -161,7 +170,7 @@ def restart_service():
 
     global loop
     checkup_restart = DelayedCallback(restart_checkup, 
-                                      PAUSE_AFTER_RESTART * 2, 
+                                      PAUSE_AFTER_RESTART, 
                                       io_loop=loop)
     service = launch_service()
     checkup_restart.start()
@@ -223,7 +232,7 @@ Keys `command`, `command`, `checkup` and `out` are required.
 example:
 
 CONFIG = {
-    'command': ['python', 'service.py', './static'],
+    'command': ['python', 'service.py'],
     'env': {'VAR1': 'abc', 'VAR2': 'xyz'},
     'command': 'tcp://127.0.0.1:7004',
     'checkup': 'tcp://127.0.0.1:7005',

@@ -8,12 +8,13 @@ from zmq.eventloop.ioloop import PeriodicCallback, DelayedCallback
 from zmq.eventloop.zmqstream import ZMQStream
 
 
+
 # constants
 
 CHECK_INTERVAL = 1000
 CHECKUP_INTERVAL = CHECK_INTERVAL * 2
 CHECKUP_TIMEOUT = CHECKUP_INTERVAL / 2
-PAUSE_BEFORE_RESTART = CHECK_INTERVAL / 6
+PAUSE_BEFORE_RESTART = CHECK_INTERVAL / 2
 PAUSE_AFTER_RESTART = PAUSE_BEFORE_RESTART
 
 
@@ -92,18 +93,17 @@ responding = False
 
 # routines
 
+
 def launch_service():
     global path, srv, KEY
 
     try:
         srv.terminate()
-        print("{0} wasn't dead, but is now.".format(MODULE))
+        # print("{0} wasn't dead, but is now.".format(MODULE))
     except NameError as e:
         # first run of launch_service, so silence
         pass
 
-
-    KEY = str(uuid.uuid4())
     with open(os.devnull, 'w') as out:
         CONFIG['service'].append(KEY)
         srv = subprocess.Popen(CONFIG['service'], 
@@ -161,11 +161,10 @@ def restart_service():
 
     global loop
     checkup_restart = DelayedCallback(restart_checkup, 
-                                      PAUSE_AFTER_RESTART, 
+                                      PAUSE_AFTER_RESTART * 2, 
                                       io_loop=loop)
     service = launch_service()
     checkup_restart.start()
-
 
 
 def check_for_change():
@@ -310,10 +309,10 @@ def main():
     root = os.getcwd()
     start(root)
 
-
 if __name__ == '__main__':
 
     try:
+        KEY = str(uuid.uuid4())
         MODULE = sys.argv[1]
         CONFIG = __import__(MODULE).__dict__['CONFIG']
 

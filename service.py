@@ -218,7 +218,7 @@ def init():
                     output.close()
                     m2.shutdown()
                     ctx.term()
-                    #gevent.shutdown()
+                    gevent.shutdown()
 
                     # die
                     return

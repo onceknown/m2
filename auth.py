@@ -42,7 +42,7 @@ HISTORY_FORMAT='%Y-%m-%d_%H:%M:%S:%f'
 
 cookie_template = 'session={s}; Domain=.{fqdn}; Max-Age=86400;'
 
-error_template = '<p class="alert alert-error"><span class="icon-alert-notice"></span> Invalid username or password.</p>'
+error_template = '<p class="alert alert-error"><span class="icon-exclamation-sign"></span> Invalid username or password.</p>'
 
 
 # borrowed from brubeck
@@ -189,7 +189,7 @@ def main():
                         if redirect:
                             redirect = redirect.lstrip('/')
                             redirect = urllib2.unquote(redirect)
-                    except (KeyError, IndexError) as e:
+                    except (KeyError, IndexError, TypeError) as e:
                         pass
                         # TODO: add error output
 

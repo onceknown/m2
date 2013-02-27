@@ -56,8 +56,8 @@ class Out(object):
         self.sock = out_sock
         self.config = kwargs
 
-        # clean up command so it can work as a log filename
-        command = kwargs.get('command', 'unknown')
+        # clean up service so it can work as a log filename
+        command = kwargs.get('service', 'unknown')
         cleaned_command = '_'.join(command) + '.log'
         cleaned_command = cleaned_command.strip(' \\-')
 
@@ -72,10 +72,11 @@ class Out(object):
         h.setLevel(logging.DEBUG)
         self.logger.addHandler(h)
 
-    def send(self, msg):
-        print(msg)
-        self.sock.send(str(msg))
-        self.logger.debug(str(msg))
+    def send(self, key, msg=''):
+        format = '{0} {1}'
+        print(format.format(key, msg))
+        self.sock.send(format.format(key, str(msg)))
+        self.logger.debug(format.format(key, msg))
 
 def db(pymongo):
     mongo = pymongo.MongoClient('localhost', DB_PORT, use_greenlets=True)

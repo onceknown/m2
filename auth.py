@@ -22,11 +22,11 @@ except ImportError as e:
 
 # define config for run.py
 CONFIG = {
-    'command': ['python', 'auth.py'],
+    'service': ['python', 'auth.py'],
     'env': {},
-    'suicide': 'tcp://127.0.0.1:7007',
+    'command': 'tcp://127.0.0.1:7007',
     'checkup': 'tcp://127.0.0.1:7008',
-    'stdout': 'tcp://127.0.0.1:7009',
+    'out': 'tcp://127.0.0.1:7009',
     'watch': ['.py', '.html']
 }
 
@@ -82,10 +82,10 @@ def main():
     validate.bind(VALIDATE)
 
     # sub to SUICIDE address
-    suicide = ctx.socket(zmq.SUB)
-    suicide.setsockopt(zmq.SUBSCRIBE, '')
-    suicide.linger = LINGER
-    suicide.connect(CONFIG['suicide'])
+    command = ctx.socket(zmq.SUB)
+    command.setsockopt(zmq.SUBSCRIBE, '')
+    command.linger = LINGER
+    command.connect(CONFIG['command'])
 
     # connect to CHECKUP rep address
     checkup = ctx.socket(zmq.REP)
@@ -96,7 +96,7 @@ def main():
     output = ctx.socket(zmq.PUB)
     output.linger = LINGER
     output.hwm = 100
-    output.connect(CONFIG['stdout'])
+    output.connect(CONFIG['out'])
     out = Out(output, **CONFIG)
 
     # connect to m2
@@ -105,7 +105,7 @@ def main():
 
     # define poller
     poller = zmq.Poller()
-    poller.register(suicide, zmq.POLLIN)
+    poller.register(command, zmq.POLLIN)
     poller.register(checkup, zmq.POLLIN)
     poller.register(validate, zmq.POLLIN)
     poller.register(m2.reqs, zmq.POLLIN)
@@ -129,14 +129,14 @@ def main():
         try:
             socks = dict(poller.poll())
 
-            # suicide published
-            if suicide in socks and socks[suicide] == zmq.POLLIN:
+            # command published
+            if command in socks and socks[command] == zmq.POLLIN:
 
-                suicide.recv()
+                command.recv()
 
                 # close all sockets
                 validate.close()
-                suicide.close()
+                command.close()
                 checkup.close()
                 output.close()
                 m2.shutdown()

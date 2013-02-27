@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 import os, sys, subprocess, signal, time
-import hashlib, urllib2, threading, errno
+import hashlib, urllib2, errno, uuid, json
 
 import zmq
 from zmq.eventloop.ioloop import PeriodicCallback, DelayedCallback
@@ -93,32 +93,37 @@ responding = False
 # routines
 
 def launch_service():
-    global path, service
+    global path, srv, KEY
 
     try:
-        service.terminate()
+        srv.terminate()
         print("{0} wasn't dead, but is now.".format(MODULE))
-    except Exception as e:
+    except NameError as e:
+        # first run of launch_service, so silence
         pass
 
+
+    KEY = str(uuid.uuid4())
     with open(os.devnull, 'w') as out:
-        return subprocess.Popen(CONFIG['command'], 
-                                cwd=path,
-                                env=CONFIG['env'],
-                                stdout=out,
-                                stderr=out)
+        CONFIG['service'].append(KEY)
+        srv = subprocess.Popen(CONFIG['service'], 
+                               cwd=path,
+                               env=CONFIG['env'],
+                               stdout=out,
+                               stderr=out)
+        return srv
 
 def send_checkup():
 
     def checkup_timeout():
-        global service, responding, timeout
+        global srv, responding, timeout
 
         timeout.stop()
         if not responding:
             # we've timed out, restart
             # TODO: provide config var for how many times to attempt start before exiting
             print('{0} not responding, attempting start.'.format(MODULE))
-            service = launch_service()
+            srv = launch_service()
 
     def recv_checkup(msg):
         global responding
@@ -130,8 +135,6 @@ def send_checkup():
         pass
         #print(msg, status)
 
-    #print('sending checkup')
-    
     # access globals
     global timeout, checkup, responding
 
@@ -150,7 +153,7 @@ def send_checkup():
 
 
 def restart_service():
-    global service
+    global srv
 
     def restart_checkup():
         global checkup_periodic
@@ -167,7 +170,7 @@ def restart_service():
 
 def check_for_change():
 
-    global checkup, loop, checksums, responding, checkup_periodic
+    global checkup, loop, checksums, responding, checkup_periodic, KEY
 
     curr_sums = check(path, watch)
     changed, deleted = get_diff(curr_sums, checksums)
@@ -176,9 +179,12 @@ def check_for_change():
         checksums = curr_sums
         print('restarting {0}.'.format(MODULE))
         checkup_periodic.stop()
-        suicide.send('die please.')
+        command.send(json.dumps({
+            'key': KEY,
+            'command': 'die'
+        }))
         delay = DelayedCallback(restart_service, 
-                                PAUSE_BEFORE_RESTART, 
+                                PAUSE_BEFORE_RESTART + 300, 
                                 io_loop=loop)
         delay.start()
 
@@ -188,7 +194,7 @@ def start(root):
     Starts main change watching loop.
     """
 
-    global loop, service, path, suicide, checkup, out 
+    global loop, srv, path, command, checkup, out 
     global checksums, watch, check_periodic, checkup_periodic
     path = root
 
@@ -196,9 +202,9 @@ def start(root):
 
     # define values for config vars
     try:
+        service = CONFIG['service']
         command = CONFIG['command']
-        suicide = CONFIG['suicide']
-        stdout = CONFIG['stdout']
+        out = CONFIG['out']
         checkup = CONFIG['checkup']
         
         try:
@@ -213,16 +219,16 @@ def start(root):
 
     except KeyError as e:
         print('''You must include CONFIG global in {0}.
-Keys `command`, `suicide`, `checkup` and `stdout` are required. 
+Keys `command`, `command`, `checkup` and `out` are required. 
 
 example:
 
 CONFIG = {
     'command': ['python', 'service.py', './static'],
     'env': {'VAR1': 'abc', 'VAR2': 'xyz'},
-    'suicide': 'tcp://127.0.0.1:7004',
+    'command': 'tcp://127.0.0.1:7004',
     'checkup': 'tcp://127.0.0.1:7005',
-    'stdout': 'tcp://127.0.0.1:7006'
+    'out': 'tcp://127.0.0.1:7006'
 }
 '''.format(MODULE))
         sys.exit(1)
@@ -233,10 +239,10 @@ CONFIG = {
     # create ioloop
     loop = zmq.eventloop.ioloop.IOLoop()
 
-    # bind suicide address
+    # bind command address
     s = ctx.socket(zmq.PUB)
-    s.bind(suicide)
-    suicide = ZMQStream(s, io_loop=loop)
+    s.bind(command)
+    command = ZMQStream(s, io_loop=loop)
 
     # bind req to checkup
     c = ctx.socket(zmq.REQ)
@@ -244,10 +250,10 @@ CONFIG = {
     c.hwm = 1
     checkup = ZMQStream(c, io_loop=loop)
 
-    # bind a sub to stdout address
+    # bind a sub to out address
     o = ctx.socket(zmq.SUB)
     o.setsockopt(zmq.SUBSCRIBE, '')
-    o.bind(stdout)
+    o.bind(out)
     out = ZMQStream(o, io_loop=loop)
     out.on_recv(print_output)
 
@@ -262,7 +268,7 @@ CONFIG = {
                                         io_loop=loop)
 
     # start service 
-    service = launch_service()
+    srv = launch_service()
 
     # build filesystem state
     checksums = check(path, watch)
@@ -275,11 +281,11 @@ CONFIG = {
 
 def stop(signum, frame):
 
-    # clean up once suicide msg is sent
+    # clean up once command msg is sent
     def sent(msg, status):
-        global loop, suicide, checkup, out
+        global loop, command, checkup, out
         try:
-            suicide.close()
+            command.close()
             checkup.close()
             out.close()
             loop.stop()
@@ -287,12 +293,15 @@ def stop(signum, frame):
             print("Couldn't stop IO loop.")
             sys.exit(1)
 
-    global loop, suicide
+    global loop, out, command, KEY
 
     print('\nStopping.')
 
-    suicide.on_send(sent)
-    suicide.send('die please.')
+    command.on_send(sent)
+    command.send(json.dumps({
+        'key': KEY,
+        'command': 'die'
+    }))
 
 
 def main():

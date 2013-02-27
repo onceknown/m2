@@ -6,36 +6,61 @@ as a readable reference for other languages.
 It demonstrates a hello world app server using MongoDB for persistance.
 It's using zmq.green and gevent's patch_socket to optimize IO.
 
-The ZMQ topology amounts to this:
+**The ZMQ topology amounts to this:**
 
-SUB on a command address.  I don't have an auth strategy defined yet,
-but I'm thinking a key can be set in the service's environment that
-can be compared to the key sent in the msg envelope. Each service will
+SUB on a command address.  For security, all msgs must include a KEY
+that matches the KEY passed at service startup. Each service will
 define an API for mutating its runtime state. Infrastructure processes
-can use this API to react real-time to state data collected from the
-checkup channel described below.
+can use this API to modify state realtime as they react to output logs 
+from the out channel and state data collected from the checkup channel
+(described below).
 
-REP on a checkup address. This is the heartbeat between infrastructure
+REP on a checkup address. This provides the heartbeat between infrastructure
 processes and app processes.  The goal is to make this channel the 
 interface for monitoring your app.  Each service will define an API
 for getting information about its status. I'm thinking a config 
-management rig running in the spirit of CFEngine3's cf-agent, 
-cf-serverd, and cf-monitord can verify the state of a heterogenous 
-cluster of services and repair state using each service's command 
-channel.
+management rig running in the spirit of CFEngine3's cf-agent can verify 
+the state of a heterogenous cluster of services and repair state using each 
+service's command channel.
 
-PUB on an out address. This is how your service logs its state changes.  
+PUB on an out address. This is how your service logs its state changes.
 Each service defines a list of event categories it will broadcast, 
 allowing infrastructure processes to SUB just to log sequences that are 
-relevant to their purposes. Infrastructure processes can be written to
+relevant to their purposes. Monitoring processes can be written to
 trigger based on defined log sequences and begin a repair cycle.
 
+All other ZMQ channels will be app specific. This example accepts requests
+from Mongrel2 and authenticates with an auth service over a REQ/REP socket, 
+redirecting to the login url returned by the auth service if not authenticated.
+
+My first instinct is to abstract with a delegate controller approach 
+similiar to Cocoa's UI delegates. For this example, I imagine something like
+
+::
+
+class AuthenticatedWebServer(m2.Service):
+
+    def __init__(delegate):
+        # body of init() below
+
+::
+
+class Delegate(object):
+
+    def handle_request(path, method, *args, **kwargs)
+        "as an example, called to generate response."
+
+>>> AuthenticatedWebServer(Delegate())
 
 
+AuthenticatedWebServer will use the delegate's methods and attributes
+inside its server loop to provide hooks for customization. m2.Service
+will guarantee that all subclasses at least implement the ZMQ topology
+described above. 
 
 """
 
-import sys, time, uuid, random 
+import sys, time, uuid, random, datetime, json
 import traceback, urllib, urllib2, Cookie
 
 try:
@@ -83,6 +108,7 @@ M2IN = 'tcp://127.0.0.1:7002'
 M2OUT = 'tcp://127.0.0.1:7003'
 
 
+
 # helpers
 
 markup = '''
@@ -97,12 +123,21 @@ markup = '''
 '''
 
 def parse_request(req):
-    return '{uri}'.format(uri=req.headers['URI'])
+    time = json.dumps(datetime.datetime.now(), default=dthandler)
+    req = json.dumps({
+        'status': 'RECEIVED',
+        'path': req.path,
+        'time': time
+    })
+    return req
+
+def dthandler(obj): 
+    return obj.isoformat() if isinstance(obj, datetime.datetime) else None
 
 
 # server
 
-def main():
+def init():
 
     # make zmq connections
     ctx = zmq.Context()
@@ -122,12 +157,13 @@ def main():
     output = ctx.socket(zmq.PUB)
     output.linger = LINGER
     output.hwm = 20
-    output.connect(CONFIG['stdout'])
+    output.connect(CONFIG['out'])
     out = Out(output, **CONFIG)
 
     # connect to auth
     auth = ctx.socket(zmq.REQ)
     auth.linger = LINGER
+    auth.hwm = 1
     auth.connect(AUTH)
 
     # connect to m2
@@ -150,32 +186,48 @@ def main():
     poller.register(checkup, zmq.POLLIN)
     poller.register(m2.reqs, zmq.POLLIN)
 
-    while True: 
+    out.send('HELLO')
+
+    id = uuid.uuid4()
+
+    while True:
         try:
-            
             # wait for IO
             socks = dict(poller.poll())
 
             # if command PUB comes through
             if command in socks and socks[command] == zmq.POLLIN:
 
-                command.recv()
+                msg = command.recv_json()
 
-                # clean up sockets
-                command.close()
-                checkup.close()
-                output.close()
-                m2.shutdown()
-                gevent.shutdown()
+                # log and ignore messages that don't validate
+                if msg.get('key') != KEY:
+                    out.send('SECURITY', json.dumps({
+                        'status': 'WRONG_KEY',
+                        'msg': msg,
+                        'id': str(id)
+                    }))
+                    continue
 
-                # die please
-                return
+                if msg.get('command') == 'die':
+
+                    out.send('GOODBYE')
+                    # clean up sockets
+                    command.close()
+                    checkup.close()
+                    output.close()
+                    m2.shutdown()
+                    ctx.term()
+                    #gevent.shutdown()
+
+                    # die
+                    return
 
             # if a checkup REQ comes through
             if checkup in socks and socks[checkup] == zmq.POLLIN:
 
                 # reply
-                checkup.recv()
+                msg = checkup.recv()
                 checkup.send("yep.")
 
             # if mongrel2 PUSHes a request
@@ -189,7 +241,7 @@ def main():
                     continue
 
                 # log request
-                out.send(parse_request(req))
+                out.send('REQUEST', parse_request(req))
 
                 # get session from cookie
                 session = ''
@@ -201,7 +253,21 @@ def main():
                         session = str(s.value)
 
                 # send auth req
-                auth.send(session)
+                try:
+                    auth.send(session)
+                except zmq.ZMQError as e:
+                    out.send('ERROR', 'Auth service req/rep in wrong state.')
+
+                    # reset state by closing and reconnecting
+                    auth.close()
+                    auth = ctx.socket(zmq.REQ)
+                    auth.linger = LINGER
+                    auth.hwm = 1
+                    auth.connect(AUTH)
+
+                    # auth service is down, so 500
+                    m2.reply_http(req, 'Auth service not responding', code=500)
+                    continue
 
                 # poll with timeout for response
                 auth_poller = zmq.Poller()
@@ -225,7 +291,10 @@ def main():
                             r = list(db.messages.find())[random.randrange(0, c)]
                         except (pymongo.errors.ConnectionFailure, pymongo.errors.AutoReconnect) as e:
                             # this request can't happen, so 500
-                            out.send('Lost connection with Mongo.')
+                            out.send('DB', json.dumps({
+                                'status': 'LOST_CONN',
+                                'error': str(e)
+                            }))
                             m2.reply_http(req, 'DB connection lost.', code=500, headers={
                                 'Content-Type': 'text/html',
                                 "Cache-Control": "no-cache, must-revalidate",
@@ -249,6 +318,14 @@ def main():
                             "Expires": "Sat, 26 Jul 1997 05:00:00 GMT"
                         })
 
+                        # log end of request
+                        end_time = json.dumps(datetime.datetime.now(), default=dthandler)
+                        out.send('REQUEST', json.dumps({
+                            'status': 'DELIVERED',
+                            'path': req.path,
+                            'time': end_time
+                        }))
+
                         ###########################
                         ## app logic is complete ##
                         ###########################
@@ -270,10 +347,19 @@ def main():
                                             'Location': redirect
                                       })
                 else:
+                    # reset state by closing and reconnecting
+                    out.send('ERROR', 'auth timed out.')
+                    auth.close()
+                    auth = ctx.socket(zmq.REQ)
+                    auth.linger = LINGER
+                    auth.hwm = 1
+                    auth.connect(AUTH)
+
                     # auth service is down, so 500
                     m2.reply_http(req, 'Auth service not responding', code=500)
+                    continue
 
-                # an unexpected error, respond 500
+                # an unexpected error if we get here, respond 500
                 m2.reply_http(req, 'Server Error', code=500)
 
 
@@ -285,5 +371,11 @@ def main():
 
 if __name__ == '__main__':
 
+    # record key passed
+    try:
+        KEY = str(sys.argv[1])
+    except IndexError as e:
+        KEY = None
+
     # start up
-    main()
+    init()

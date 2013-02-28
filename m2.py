@@ -1,17 +1,42 @@
 #!/usr/bin/python
 
+"""
+This is a babysitter for Mongrel2.  It spins it up and pings it regularly
+to make sure it's still up, if it isn't it attempts to restart. It's designed
+right now for rapid prototyping, it takes all the HOSTS defined in config.py and 
+prepends them to your /etc/hosts file.  If you run m2.py and each service with 
+run.py in its own terminal you have a simple but powerful rapid development 
+environment ready to go.
+
+My goal is to provide a full API for configuring all aspects of Mongrel2. Between
+its elegant sqlite config schema and its control port everything is there to
+provide a very powerful production API for Mongrel2.
+
+"""
+
 import os, sys, re, subprocess, signal, time, errno
 
-import zmq
-from zmq.eventloop.ioloop import PeriodicCallback, DelayedCallback
-from zmq.eventloop.zmqstream import ZMQStream
+try:
+    import zmq
+    from zmq.eventloop.ioloop import PeriodicCallback, DelayedCallback
+    from zmq.eventloop.zmqstream import ZMQStream
+except ImportError as e:
+    print('You must have pyzmq installed.')
+    sys.exit(1)
 
-from mongrel2 import tnetstrings
+try:
+    from mongrel2 import tnetstrings
+except ImportError as e:
+    print('You must have mongrel2 installed.')
+    sys.exit(1)
 
 
 # constants
 
-from config import m2, M2_PID_PATH, PATHS, HOSTS
+try:
+    from config import m2, M2_PID_PATH, PATHS, HOSTS
+except ImportError as e:
+    print('You must create a config.py.')
 
 CHECKUP_INTERVAL = 2000
 CHECKUP_TIMEOUT = CHECKUP_INTERVAL / 4
@@ -22,6 +47,7 @@ STOP_TIMEOUT = CHECKUP_TIMEOUT
 M2_CONTROL_PORT = "ipc://{0}/run/m2.port".format(os.getcwd())
 
 HOST_PATTERN = '^\s*127.0.0.1\s+{0}\s*$'
+
 
 # helpers
 

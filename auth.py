@@ -1,15 +1,36 @@
 #!/usr/bin/python
 
-import os, sys, hashlib, urllib2, traceback
+"""
+This is a "basic auth" service, created to demonstrate a couple things.
+
+First, many frameworks come with auth baked in, but each one implements
+a little differently and it's often difficult to get multiple frameworks
+working together.  With a self-contained service like this one, you can add
+new apps written in any language and they just need to implement the auth
+REQ/REP protocol to plug in.
+
+Second, I wanted to demonstrate how powerful it is when you can accept both
+HTTP and ZMQ streams in the same running process.  The ZMQ API is exposed 
+internally, while the mongrel2 handler provides the external interface to
+the user.
+
+"""
+
+import os, sys, hashlib, urllib2, traceback, json
 from cgi import parse_qs
 from Cookie import SimpleCookie
 from uuid import uuid4
 from datetime import datetime
 
-import pymongo
-import bcrypt
-import zmq.green as zmq
-from mongrel2 import handler
+try:
+    # import lib dependencies
+    from gevent import monkey; monkey.patch_socket()
+    import pymongo
+    import zmq.green as zmq
+    from mongrel2 import handler
+except ImportError as e:
+    print('You must have gevent, pymongo, pyzmq, and mongrel2 installed.')
+    sys.exit(1)
 
 
 # import config constants and util funcs
@@ -45,6 +66,10 @@ cookie_template = 'session={s}; Domain=.{fqdn}; Max-Age=86400;'
 error_template = '<p class="alert alert-error"><span class="icon-exclamation-sign"></span> Invalid username or password.</p>'
 
 
+def dthandler(obj): 
+    return obj.isoformat() if isinstance(obj, datetime) else None
+
+
 # borrowed from brubeck
 BCRYPT = 'bcrypt'
 def gen_hexdigest(raw_password, algorithm=BCRYPT, salt=None):
@@ -61,6 +86,7 @@ def gen_hexdigest(raw_password, algorithm=BCRYPT, salt=None):
         return (algorithm, salt, bcrypt.hashpw(raw_password, salt))
     raise ValueError('Unknown password algorithm')
 
+
 def _lscmp(a, b):
     """
     Compares two strings in a cryptographically safe way
@@ -71,15 +97,10 @@ def _lscmp(a, b):
 
 # startup
 
-def main():
+def init():
 
     # make zmq connections
     ctx = zmq.Context()
-
-    # bind to validate address
-    validate = ctx.socket(zmq.REP)
-    validate.linger = LINGER
-    validate.bind(VALIDATE)
 
     # sub to SUICIDE address
     command = ctx.socket(zmq.SUB)
@@ -92,7 +113,7 @@ def main():
     checkup.linger = LINGER
     checkup.connect(CONFIG['checkup'])
 
-    # connect to STDOUT pub address
+    # connect to OUT pub address
     output = ctx.socket(zmq.PUB)
     output.linger = LINGER
     output.hwm = 100
@@ -102,6 +123,11 @@ def main():
     # connect to m2
     sender_id = uuid4().hex 
     m2 = handler.Connection(sender_id, M2IN, M2OUT, LINGER)
+
+    # bind to validate address
+    validate = ctx.socket(zmq.REP)
+    validate.linger = LINGER
+    validate.bind(VALIDATE)
 
     # define poller
     poller = zmq.Poller()
@@ -117,12 +143,13 @@ def main():
         users = db.users
         sessions = db.sessions
     except Exception as e:
-        out.send("Couldn't connect to MongoDB.")
-        return
+        out.send("DB", "Couldn't connect to MongoDB.")
 
     # cache login page template
     with open('./login.html', 'r') as f:
         login_template = f.read()
+
+    out.send('HELLO')
 
     # start server loop
     while True: 
@@ -132,17 +159,32 @@ def main():
             # command published
             if command in socks and socks[command] == zmq.POLLIN:
 
-                command.recv()
+                msg = command.recv_json()
 
-                # close all sockets
-                validate.close()
-                command.close()
-                checkup.close()
-                output.close()
-                m2.shutdown()
+                # log and ignore messages that don't validate
+                if msg.get('key') != KEY:
+                    out.send('SECURITY', json.dumps({
+                        'status': 'WRONG_KEY',
+                        'msg': msg,
+                        'id': str(id)
+                    }))
+                    continue
 
-                # die please
-                return
+                if msg.get('command') == 'die':
+
+                    out.send('GOODBYE')
+
+                    # close all sockets
+                    validate.close()
+                    command.close()
+                    checkup.close()
+                    output.close()
+                    m2.shutdown()
+                    ctx.term()
+                    gevent.shutdown()
+
+                    # die
+                    return
 
 
             # checkup request made
@@ -161,10 +203,10 @@ def main():
                 session_id = validate.recv()
                 session = sessions.find_one({'key': session_id})
                 if session:
-                    out.send('{0} successfully validated.'.format(session_id))
+                    out.send('VALIDATE', '{0} successfully validated.'.format(session_id))
                     validate.send_json({'success': True})
                     continue
-                out.send('{0} did not validate.'.format(session_id))
+                out.send('VALIDATE', '{0} did not validate.'.format(session_id))
                 validate.send_json({'success': False, 'redirect': LOGIN_URL})
                 continue
 
@@ -182,16 +224,26 @@ def main():
 
                     # parse creds
                     d = parse_qs(req.body)
-                    out.send(d)
                     try:
                         username, pswd = d.get('name')[0], d.get('password')[0]
-                        redirect = d.get('redirect')[0]
+                        redirect = d.get('redirect')
+                        redirect = redirect[0] if len(redirect) else ''
                         if redirect:
                             redirect = redirect.lstrip('/')
                             redirect = urllib2.unquote(redirect)
                     except (KeyError, IndexError, TypeError) as e:
-                        pass
-                        # TODO: add error output
+                        out.send('LOGIN', json.dumps({
+                            'status': 'BAD_POST_DATA',
+                            'error': e,
+                            'id': req.conn_id
+                        }))
+
+                    out.send('LOGIN', json.dumps({
+                        'status': 'LOGIN_POST',
+                        'username': username,
+                        'redirect': redirect,
+                        'id': req.conn_id
+                    }))
 
                     # if creds were sent
                     if username and pswd:
@@ -224,9 +276,23 @@ def main():
                                                     'Location': redirect,
                                                     'Set-Cookie': cookie_value
                                               })
+
+                                out.send('LOGIN', json.dumps({
+                                    'status': 'LOGIN_SUCCESS',
+                                    'username': username,
+                                    'redirect': redirect,
+                                    'id': req.conn_id
+                                }))
+
                                 continue
 
                     # respond with invalid login
+                    out.send('LOGIN', json.dumps({
+                        'status': 'INVALID_CREDS',
+                        'username': username,
+                        'id': req.conn_id
+
+                    }))
                     response = login_template.format(
                                     title='Invalid Login',
                                     error=error_template ,
@@ -248,11 +314,19 @@ def main():
 
                     if qs:
                         try:
-                            # grab redirect from query string so it can be passed to hidden input
+                            # grab redirect from query string so it can be 
+                            # passed to hidden input
                             redirect = parse_qs(qs).get('redirect')[0]
-                            out.send(redirect)
                         except (KeyError, IndexError):
                             redirect = ''
+
+                    start_time = json.dumps(datetime.now(), default=dthandler)
+                    out.send('REQUEST', json.dumps({
+                        'status': 'RECEIVED',
+                        'redirect': redirect,
+                        'time': start_time,
+                        'id': req.conn_id
+                    }))
 
                     try:
                         # render page
@@ -260,7 +334,7 @@ def main():
                                                          error='',
                                                          redirect=redirect)
                     except KeyError as e:
-                        out.send(str(e))
+                        out.send('ERROR', str(e))
                         response = "Server Error: Couldn't load auth page."
                         code = 500
 
@@ -270,6 +344,14 @@ def main():
                                   headers={
                                       'Content-type': 'text/html'
                                   })
+
+                    end_time = json.dumps(datetime.now(), default=dthandler)
+                    out.send('REQUEST', json.dumps({
+                        'status': 'DELIVERED',
+                        'time': end_time,
+                        'id': req.conn_id
+                    }))
+
                     continue
         except Exception as e:
             out.send('\nFAIL!\n-----')
@@ -277,4 +359,12 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+
+    # record key passed
+    try:
+        KEY = str(sys.argv[1])
+    except IndexError as e:
+        KEY = None
+
+    # start up
+    init()

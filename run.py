@@ -232,7 +232,7 @@ Keys `command`, `command`, `checkup` and `out` are required.
 example:
 
 CONFIG = {
-    'command': ['python', 'service.py'],
+    'service': ['python', 'service.py'],
     'env': {'VAR1': 'abc', 'VAR2': 'xyz'},
     'command': 'tcp://127.0.0.1:7004',
     'checkup': 'tcp://127.0.0.1:7005',

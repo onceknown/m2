@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 """
 This is an example service running behind Mongrel2.  It's written 
 without any python abstractions so it can remain flexible and work 
@@ -127,7 +129,8 @@ def parse_request(req):
     req = json.dumps({
         'status': 'RECEIVED',
         'path': req.path,
-        'time': time
+        'time': time,
+        'id': req.conn_id
     })
     return req
 
@@ -153,7 +156,7 @@ def init():
     checkup.linger = LINGER
     checkup.connect(CONFIG['checkup'])
 
-    # connect to STDOUT pub address
+    # connect to OUT pub address
     output = ctx.socket(zmq.PUB)
     output.linger = LINGER
     output.hwm = 20
@@ -324,7 +327,8 @@ def init():
                         out.send('REQUEST', json.dumps({
                             'status': 'DELIVERED',
                             'path': req.path,
-                            'time': end_time
+                            'time': end_time,
+                            'id': req.conn_id
                         }))
 
                         ###########################

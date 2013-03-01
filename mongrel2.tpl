@@ -4,7 +4,7 @@ auth_handler = Handler(send_spec='tcp://127.0.0.1:7010',
                 recv_spec='tcp://127.0.0.1:7011', 
                 recv_ident='')
 
-# handler for data service
+# handler for service
 service_handler = Handler(send_spec='tcp://127.0.0.1:7002', 
                           send_ident='34f9ceee-cd52-4b7f-b197-88bf2f0ec378', 
                           recv_spec='tcp://127.0.0.1:7003', 

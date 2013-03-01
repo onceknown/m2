@@ -21,12 +21,12 @@ any infrastructure process that will send commands to a service will also
 subscribe to its output, and will keep sending a command until they
 see the correct sequence of logs from the output. The process can then send a
 checkup REQ to verify the correct state was reached. I think this best 
-mirrors CFEngine's eventual consistency approach, but will need to get it
+mirrors CFEngine's eventual consistency approach, but I will need to get it
 working before I know how well it works in a realtime context.
 
 REP on a checkup address. This provides the heartbeat between infrastructure
 processes and app processes.  The goal is to make this channel the interface 
-for actively monitoring your app.  Each service will define an API
+for actively monitoring your app. Each service will define an API
 for getting information about its status. I'm thinking a config 
 management rig running in the spirit of CFEngine3's cf-agent can verify 
 the state of a heterogenous cluster of services and repair state using each 
@@ -337,6 +337,7 @@ def init():
                             'time': end_time,
                             'id': req.conn_id
                         }))
+
 
                         ###########################
                         ## app logic is complete ##

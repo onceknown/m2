@@ -28,8 +28,9 @@ try:
     import pymongo
     import zmq.green as zmq
     from mongrel2 import handler
+    import bcrypt
 except ImportError as e:
-    print('You must have gevent, pymongo, pyzmq, and mongrel2 installed.')
+    print('You must have gevent, pymongo, pyzmq, bcrypt and mongrel2 installed.')
     sys.exit(1)
 
 

@@ -12,24 +12,31 @@ It's using zmq.green and gevent's patch_socket to optimize IO.
 
 SUB on a command address.  For security, all msgs must include a KEY
 that matches the KEY passed at service startup. Each service will
-define an API for mutating its runtime state. Infrastructure processes
+define an API for mutating its configuration. Infrastructure processes
 can use this API to modify state realtime as they react to output logs 
 from the out channel and state data collected from the checkup channel
-(described below).
+(described below).  I've considered REQ/REP for this one, but I think
+I want the command feedback to come from the out channel, so pretty much 
+any infrastructure process that will send commands to a service will also
+subscribe to its output, and will keep sending a command until they
+see the correct sequence of logs from the output. The process can then send a
+checkup REQ to verify the correct state was reached. I think this best 
+mirrors CFEngine's eventual consistency approach, but will need to get it
+working before I know how well it works in a realtime context.
 
 REP on a checkup address. This provides the heartbeat between infrastructure
-processes and app processes.  The goal is to make this channel the 
-interface for monitoring your app.  Each service will define an API
+processes and app processes.  The goal is to make this channel the interface 
+for actively monitoring your app.  Each service will define an API
 for getting information about its status. I'm thinking a config 
 management rig running in the spirit of CFEngine3's cf-agent can verify 
 the state of a heterogenous cluster of services and repair state using each 
 service's command channel.
 
-PUB on an out address. This is how your service logs its state changes.
-Each service defines a list of event categories it will broadcast, 
-allowing infrastructure processes to SUB just to log sequences that are 
-relevant to their purposes. Monitoring processes can be written to
-trigger based on defined log sequences and begin a repair cycle.
+PUB on an out address. This provides the interface for passively monitoring 
+your app. Each service defines a list of event categories it will broadcast, 
+allowing infrastructure processes to SUB just to log sequences that are relevant 
+to their purposes. Monitoring processes can be written to trigger based on defined 
+log sequences and begin a repair cycle.
 
 All other ZMQ channels will be app specific. This example accepts requests
 from Mongrel2 and authenticates with an auth service over a REQ/REP socket, 

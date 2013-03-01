@@ -15,7 +15,7 @@ complicating your app code.
 I'm using Tornado's IO Loop since a reactor loop simplifies interval code
 (at least in my head). I need to decide on a config API that can be used no
 matter what language the service is written in, right now it uses Python's
-excellent namespacing to hack together something that works.
+namespacing flexibility to hack together something that works.
 
 """
 

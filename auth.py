@@ -9,10 +9,10 @@ working together.  With a self-contained service like this one, you can add
 new apps written in any language and they just need to implement the auth
 REQ/REP protocol to plug in.
 
-Second, I wanted to demonstrate how powerful it is when you can accept both
+Second, I want to demonstrate how powerful it is when you can accept both
 HTTP and ZMQ streams in the same running process.  The ZMQ API is exposed 
 internally, while the mongrel2 handler provides the external interface to
-the user.
+the user. 
 
 """
 

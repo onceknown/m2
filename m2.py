@@ -1,16 +1,17 @@
 #!/usr/bin/python
 
 """
-This is a babysitter for Mongrel2.  It spins it up and pings it regularly
-to make sure it's still up, if it isn't it attempts to restart. It's designed
-right now for rapid prototyping, it takes all the HOSTS defined in config.py and 
-prepends them to your /etc/hosts file.  If you run m2.py and each service with 
-run.py in its own terminal you have a simple but powerful rapid development 
-environment ready to go.
+Right now, this is a simple babysitter for Mongrel2.  It spins it up and pings it 
+regularly to make sure it's still up, if it isn't it attempts to restart. It's 
+designed for rapid prototyping, so for convenience it takes all the HOSTS defined 
+in config.py and prepends them to your /etc/hosts file pointing to localhost.  If 
+you run m2.py and each service with run.py in its own terminal you have a local 
+multi-process development environment up and running, and everything auto-restarts 
+on save.
 
-My goal is to provide a full API for configuring all aspects of Mongrel2. Between
-its elegant sqlite config schema and its control port everything is there to
-provide a very powerful production API for Mongrel2.
+My goal is to provide a full ZMQ API for configuring all aspects of Mongrel2. Between
+its simple sqlite config schema, live reload ability, and ZMQ control port everything 
+is there to allow apps to set their own HTTP paths with m2 when they start up.
 
 """
 

@@ -183,7 +183,7 @@ def check_for_change():
     curr_sums = check(path, watch)
     changed, deleted = get_diff(curr_sums, checksums)
     
-    if len(changed) != 0 or len(deleted) != 0:
+    if len(changed) or len(deleted):
         checksums = curr_sums
         print('restarting {0}.'.format(MODULE))
         checkup_periodic.stop()
@@ -326,8 +326,8 @@ if __name__ == '__main__':
         CONFIG = __import__(MODULE).__dict__['CONFIG']
 
     except IndexError as e:
-        print('You must pass the name of the module to run. Example: ',
-              '> python run.py service')
+        print('You must pass the name of the module to run. Example: ')
+        print('> python run.py service')
         sys.exit(1)
 
     except ImportError as e:

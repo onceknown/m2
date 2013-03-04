@@ -147,7 +147,7 @@ def send_checkup():
         responding = True
 
     # access globals
-    global timeout, checkup, responding
+    global timeout, checkup, responding, loop
 
     # listen for ping back
     checkup.on_recv(recv_checkup)

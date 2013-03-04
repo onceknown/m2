@@ -10,7 +10,8 @@ FQDN = 'dannydavidson.com'
 HOSTS = {
     'root_host': FQDN,
     'www_host': 'www.{0}'.format(FQDN),
-    'login_host': 'auth.{0}'.format(FQDN)
+    'login_host': 'auth.{0}'.format(FQDN),
+    'ecomm_host': 'ecommerce.{0}'.format(FQDN)
 }
 
 # define root and login url used by auth.py

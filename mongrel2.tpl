@@ -10,18 +10,22 @@ service_handler = Handler(send_spec='tcp://127.0.0.1:7002',
                           recv_spec='tcp://127.0.0.1:7003', 
                           recv_ident='')
 
-# proxy for meteor app
-meteor_proxy = Proxy(addr='127.0.0.1', port=3002) 
+# proxy for ecomm
+ecomm_proxy = Proxy(addr='127.0.0.1', port=3000) 
 
 # auth host
 auth = Host(name="{login_host}", routes={{
     '/': auth_handler
 }})
 
+# ecomm host
+ecomm = Host(name="{ecomm_host}", routes={{
+    '/': ecomm_proxy
+}})
+
 # root host
 root = Host(name="{root_host}", routes={{
-    '/hello/': service_handler,
-    '/': meteor_proxy
+    '/': service_handler
 }})
 
 # server
@@ -35,7 +39,7 @@ main = Server(
     name="main", 
     port={PORT}, 
     filters = [], 
-    hosts=[root, auth]
+    hosts=[root, auth, ecomm]
 ) 
 
 settings = {{"zeromq.threads": 1,

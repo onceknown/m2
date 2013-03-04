@@ -16,7 +16,7 @@ the user.
 
 """
 
-import os, sys, hashlib, urllib2, traceback, json
+import os, sys, hashlib, urllib2, traceback, json, random
 from cgi import parse_qs
 from Cookie import SimpleCookie
 from uuid import uuid4
@@ -257,7 +257,8 @@ def init():
                             
                             if _lscmp(encrypted_pswd, user.get('pswd')):
                                 timestamp = datetime.now().strftime(HISTORY_FORMAT)
-                                h = hashlib.sha512('{time}{user}'.format(
+                                h = hashlib.sha512('{random}{time}{user}'.format(
+                                                        random=random.randint(0, 100 * 100 * 100),
                                                         time=timestamp,
                                                         user=user.get('_id')))
                                 value = h.hexdigest()

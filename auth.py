@@ -220,6 +220,10 @@ def init():
                 username, pswd = None, None
                 redirect = HOME_URL
 
+                # if a disconnect, bail
+                if req.is_disconnect(): 
+                    continue
+
                 # if posting login creds
                 if req.headers.get('METHOD') == 'POST':
 
@@ -235,8 +239,7 @@ def init():
                     except (KeyError, IndexError, TypeError) as e:
                         out.send('LOGIN', json.dumps({
                             'status': 'BAD_POST_DATA',
-                            'error': e,
-                            'id': req.conn_id
+                            'error': str(e)
                         }))
 
                     out.send('LOGIN', json.dumps({
@@ -319,7 +322,7 @@ def init():
                             # grab redirect from query string so it can be 
                             # passed to hidden input
                             redirect = parse_qs(qs).get('redirect')[0]
-                        except (KeyError, IndexError):
+                        except (KeyError, IndexError, TypeError):
                             redirect = ''
 
                     start_time = json.dumps(datetime.now(), default=dthandler)

@@ -49,14 +49,14 @@ similiar to Cocoa's UI delegates. For this example, I imagine something like
 
 class AuthenticatedWebServer(m2.Service):
 
-    def __init__(delegate):
+    def __init__(self, delegate):
         # body of init() below
 
 ::
 
 class Delegate(object):
 
-    def handle_request(path, method, *args, **kwargs)
+    def handle_request(self, path, method, *args, **kwargs)
         "as an example, called to generate response."
 
 >>> AuthenticatedWebServer(Delegate())
@@ -68,6 +68,7 @@ will guarantee that all subclasses at least implement the ZMQ topology
 described above.
 
 """
+
 
 import sys, time, uuid, random, datetime, json
 import traceback, urllib, urllib2, Cookie

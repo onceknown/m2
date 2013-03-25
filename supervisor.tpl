@@ -126,3 +126,27 @@ stderr_logfile_backups=10
 stderr_capture_maxbytes=1MB
 environment=
 
+[program:ecommerce]
+command=/root/meteor/meteor --production
+process_name=ecommerce
+numprocs=1
+directory={ROOT}/../ecommerce
+umask=2
+autostart=true
+autorestart=true
+startsecs=3
+startretries=3
+stopsignal=INT
+stopwaitsecs=3
+user={USER}
+redirect_stderr=false
+stdout_logfile={LOG_PATH}/ecommerce-out.log
+stdout_logfile_maxbytes=1MB
+stdout_logfile_backups=10
+stdout_capture_maxbytes=1MB
+stderr_logfile={LOG_PATH}/ecommerce-err.log
+stderr_logfile_maxbytes=1MB
+stderr_logfile_backups=10
+stderr_capture_maxbytes=1MB
+environment=MONGO_URL="mongodb://127.0.0.1:{DB_PORT}/ecommerce", URL="http://ecommerce.dannydavidson.com", AUTH_ADDR="tcp://127.0.0.1:7012"
+

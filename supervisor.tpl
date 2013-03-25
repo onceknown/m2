@@ -148,5 +148,5 @@ stderr_logfile={LOG_PATH}/ecommerce-err.log
 stderr_logfile_maxbytes=1MB
 stderr_logfile_backups=10
 stderr_capture_maxbytes=1MB
-environment=MONGO_URL="mongodb://127.0.0.1:{DB_PORT}/ecommerce", URL="http://ecommerce.dannydavidson.com", AUTH_ADDR="tcp://127.0.0.1:7012"
+environment=MONGO_URL="mongodb://127.0.0.1:{DB_PORT}/ecommerce", URL="http://ecommerce.dannydavidson.com"
 
